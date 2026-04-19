@@ -1,0 +1,7 @@
+n,seed,method,success,status,runtime_seconds,objective_value,marginal_violation,iterations,solver_message,simplex_objective,objective_gap_vs_simplex
+3,11,simplex,True,optimal,0.004586916002153885,10.107462599223187,0.0,6,Optimization terminated successfully. (HiGHS Status 7: Optimal),10.107462599223187,0.0
+3,11,ipm,True,optimal,0.0011925409999093972,10.107462599223187,0.0,7,Optimization terminated successfully. (HiGHS Status 7: Optimal),10.107462599223187,0.0
+3,11,pdlp,True,optimal,0.0001951669983100146,10.107462599192484,7.761791209759394e-12,64,Solved with OR-Tools PDLP.,10.107462599223187,-3.070255161219393e-11
+4,17,simplex,True,optimal,0.0006160830016597174,12.499220260651615,0.0,6,Optimization terminated successfully. (HiGHS Status 7: Optimal),12.499220260651615,0.0
+4,17,ipm,True,optimal,0.0006144580038380809,12.499220260651615,0.0,8,Optimization terminated successfully. (HiGHS Status 7: Optimal),12.499220260651615,0.0
+4,17,pdlp,True,optimal,0.00014283299969974905,12.49922026065149,2.886579864025407e-14,128,Solved with OR-Tools PDLP.,12.499220260651615,-1.2434497875801753e-13

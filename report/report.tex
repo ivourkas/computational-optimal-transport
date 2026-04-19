@@ -1,0 +1,209 @@
+\documentclass[10pt]{article}
+
+\usepackage[margin=0.9in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage[hidelinks]{hyperref}
+\usepackage[font=small,labelfont=bf]{caption}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.35em}
+\renewcommand{\arraystretch}{1.05}
+
+\title{\vspace{-1em}IEOR 6616 Programming Project: Computational Optimal Transport}
+\author{Ioannis Vourkas\\
+UNI: 2299\\
+Visiting PhD Student, Department of Electrical Engineering, CUNY City College}
+\date{April 2026}
+
+\begin{document}
+\maketitle
+
+We completed all required tasks from Parts 1--4 and the visualization section, and we also completed both optional extra-credit implementations: a custom NumPy PDHG solver for the LP and a custom log-domain Sinkhorn solver for entropic OT. Throughout, we used the same experimental setup requested in the statement: two non-axis-aligned 2D Gaussian point clouds, uniform marginals, squared Euclidean transport costs, and exact LP OT as the baseline reference.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{llll}
+\toprule
+Section & Problem & Solver(s) used & Algorithm \\
+\midrule
+Part 1 & Exact OT LP & HiGHS-DS / HiGHS-IPM / OR-Tools PDLP & simplex / IPM / PDHG \\
+Part 1 (opt.) & Exact OT LP & custom NumPy PDHG & hand-coded PDHG \\
+Part 2 & Quadratic OT & custom ADMM / Clarabel & ADMM / IPM \\
+Part 3 & Entropic OT & POT Sinkhorn / Clarabel & Sinkhorn / conic IPM \\
+Part 3 (opt.) & Entropic OT & custom log-domain Sinkhorn & stabilized Sinkhorn \\
+Part 4 & Gaussian OT & HiGHS-IPM + \texttt{sqrtm} & exact LP + closed form \\
+\bottomrule
+\end{tabular}
+\caption{Solvers used in the project and the algorithmic paradigm each one represents.}
+\label{tab:solvers}
+\end{table}
+
+\section*{Part 1: Exact OT as an LP}
+\textbf{(a) Solve with three paradigms.} We formulated exact OT in standard LP form by vectorizing the transport plan $P$ into $x=\mathrm{vec}(P)$ and enforcing the row and column marginal constraints with a sparse equality matrix $A_{\mathrm{eq}}$. We verified the formulation on the required small cases $n\in\{3,4\}$: simplex, IPM, and PDLP returned matching objectives and zero or near-zero marginal violation. For the main experiment, we solved the same instances with simplex, IPM, PDLP, and our optional custom PDHG implementation. In the custom solver we parameterized the step sizes as $\tau=\eta/\omega$ and $\sigma=\eta\omega$, with $\eta=\alpha/\|K\|$, where $K$ is the linear operator mapping a transport plan to its row and column sums. This means our optional step-size experiment was indeed a sweep over different primal and dual step sizes: on the $n=100$ instance we varied $\omega\in\{1,2,4,8\}$ and $\alpha\in\{0.8,1.0,1.13,1.25,1.4,1.6\}$, which induced different pairs $(\tau,\sigma)$. The main comparison used the conservative tuned setting $\omega=2$, $\alpha=1.13$, while the strongest fixed setting found in the sweep was $\omega=8$, $\alpha=1.6$. We did not keep restart or adaptive-step heuristics in the final submitted solver, so our extra-credit conclusions are based on fixed-step tuning rather than claiming a robust improvement from those techniques. The solve times are summarized in Table~\ref{tab:part1a-time}, the required log-log scaling plot is shown in Figure~\ref{fig:part1-time}, and the optional PDHG-vs-PDLP scaling comparison is shown in Figure~\ref{fig:part1-pdhg}. IPM was the fastest exact solver at the larger sizes, while PDLP remained competitive and much better scaled than simplex on CPU. The optional custom PDHG converged well at $n=50$ and $n=100$ but was not competitive at $n=200$ or $n=500$.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\begin{tabular}{rcccc}
+\toprule
+$n$ & Simplex & IPM & PDLP & PDHG (ours) \\
+\midrule
+50  & 0.0087 & 0.0088 & 0.0180 & 0.2524 \\
+100 & 0.0750 & 0.0416 & 0.1355 & 1.2938 \\
+200 & 0.6410 & 0.2172 & 0.5766 & 3.4917$^\ast$ \\
+500 & 17.4944 & 2.0248 & 4.9631 & 18.1902$^\ast$ \\
+\bottomrule
+\end{tabular}
+\caption{Part 1(a) solve times in seconds. The custom PDHG entries marked with $^\ast$ hit the iteration limit without reaching the target tolerance.}
+\label{tab:part1a-time}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.68\textwidth]{figures/part1a_timing_loglog.png}
+\caption{Required Part 1(a) log-log timing plot for simplex, IPM, and PDLP. The IPM curve is the lowest for the larger instances, while simplex becomes much steeper by $n=500$.}
+\label{fig:part1-time}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.68\textwidth]{figures/optional_pdhg_vs_pdlp.png}
+\caption{Optional extra-credit comparison between OR-Tools PDLP and the custom NumPy PDHG implementation. The custom implementation is accurate on smaller instances but does not scale competitively to the larger ones.}
+\label{fig:part1-pdhg}
+\end{figure}
+
+\textbf{(b) Accuracy.} The statement asks for the transport cost $\langle C,P\rangle$ and the marginal violation $\|P1-a\|_1+\|P^\top 1-b\|_1$ for each method, and to present timing and accuracy together. Table~\ref{tab:part1b-acc} gives those values. Simplex and IPM matched to floating-point precision on all tested sizes. PDLP was essentially exact as well: even at $n=500$, its objective differed from simplex by only $3.46\times 10^{-7}$ and its marginal violation was $8.19\times 10^{-9}$. Our own PDHG loop was also very accurate at $n=50$ and $n=100$ (marginal violations around $10^{-6}$), but its large-instance runs did not reach the LP optimum within the fixed budget. Figure~\ref{fig:part1-steps} is the explicit ``what works and what does not'' step-size experiment requested in the statement: small $\omega$ values, which correspond to larger primal and smaller dual steps, mostly stalled, while larger $\omega$ together with a larger $\alpha$ produced the only robustly converged settings.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\begin{tabular}{rrlrrr}
+\toprule
+$n$ & Method & Status & Runtime (s) & $\langle C,P\rangle$ & Marginal violation \\
+\midrule
+50  & Simplex      & exact     & 0.0087 & 12.61027509 & 0.00e+00 \\
+50  & IPM          & exact     & 0.0088 & 12.61027509 & 0.00e+00 \\
+50  & PDLP         & optimal   & 0.0180 & 12.61027509 & 1.30e-14 \\
+50  & PDHG (ours)  & converged & 0.2524 & 12.61027330 & 9.86e-07 \\
+100 & Simplex      & exact     & 0.0750 & 10.82065800 & 0.00e+00 \\
+100 & IPM          & exact     & 0.0416 & 10.82065800 & 0.00e+00 \\
+100 & PDLP         & optimal   & 0.1355 & 10.82065800 & 1.21e-14 \\
+100 & PDHG (ours)  & converged & 1.2938 & 10.82065685 & 9.97e-07 \\
+200 & Simplex      & exact     & 0.6410 & 11.01030871 & 0.00e+00 \\
+200 & IPM          & exact     & 0.2172 & 11.01030871 & 0.00e+00 \\
+200 & PDLP         & optimal   & 0.5766 & 11.01030871 & 2.68e-13 \\
+200 & PDHG (ours)  & max iter. & 3.4917 & 8.56303399  & 2.11e-01 \\
+500 & Simplex      & exact     & 17.4944 & 10.38950764 & 0.00e+00 \\
+500 & IPM          & exact     & 2.0248 & 10.38950764 & 0.00e+00 \\
+500 & PDLP         & optimal   & 4.9631 & 10.38950799 & 8.19e-09 \\
+500 & PDHG (ours)  & max iter. & 18.1902 & 1.18420039  & 1.13e+00 \\
+\bottomrule
+\end{tabular}
+\caption{Part 1(b) accuracy table. PDLP gets extremely close to the LP optimum, while the custom PDHG loop succeeds only on the smaller cases.}
+\label{tab:part1b-acc}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.60\textwidth]{figures/optional_pdhg_step_sweep.png}
+\caption{Optional PDHG step-size study on the $n=100$ instance. We swept $\omega$ and $\alpha$, which equivalently sweeps the induced PDHG step sizes $(\tau,\sigma)$. Small primal weights mostly stalled, while $\omega=8$ together with a larger step multiplier produced the best converged runs.}
+\label{fig:part1-steps}
+\end{figure}
+
+\section*{Part 2: Quadratic Regularization}
+\textbf{(a) Solve with ADMM and IPM.} We solved
+\[
+\min_{P\in U(a,b)} \langle C,P\rangle + \frac{\lambda}{2}\|P\|_F^2
+\]
+with a custom ADMM implementation and a generic IPM baseline (Clarabel) on the representative case $n=200$, $\lambda=0.1$. For ADMM, we initialized the penalty at
+\[
+\rho_0 = 10\,\mathrm{mean}(C)=147.12,
+\]
+which puts $\rho$ on the same scale as the transport costs. On this CPU experiment, IPM was much faster ($0.261$s) than ADMM ($3.304$s), but the transport costs were nearly identical ($11.01031430$ vs. $11.01030104$), so both solvers were solving the same problem correctly.
+
+\textbf{(b) Regularization path.} We used 10 log-spaced values of $\lambda$ from $10$ down to $10^{-3}$ and kept the same $n=200$ instance fixed. Figure~\ref{fig:part2-path} shows $\langle C,P_\lambda^\ast\rangle$ versus $\lambda$. Both the ADMM and IPM curves move back toward the LP baseline as $\lambda\to 0$, exactly as expected. For example, the IPM transport gap to $W_{\mathrm{LP}}$ shrank from about $3.26\times 10^{-3}$ at $\lambda=10$ to $6.56\times 10^{-7}$ at $\lambda=10^{-3}$.
+
+\textbf{(c) Effect of the ADMM penalty $\rho$.} We studied $\rho$ by sweeping the multipliers $\{0.1,0.2,0.5,1,2,4\}$ around the base value $\rho_0=147.12$, still with $n=200$ and $\lambda=0.1$. Figure~\ref{fig:part2-rho} shows a clear sweet spot. Very small $\rho$ values stalled badly, while the best runtime was obtained near $\rho\approx 294.24$. This is the main practical lesson from Part 2: ADMM is natural for the quadratic problem, but its speed depends strongly on the penalty parameter.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.64\textwidth]{figures/part2b_regularization_path.png}
+\caption{Part 2(b) regularization path. Both ADMM and IPM recover the LP transport cost as $\lambda\to 0$.}
+\label{fig:part2-path}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.64\textwidth]{figures/part2c_rho_sensitivity.png}
+\caption{Part 2(c) ADMM penalty sweep. Too-small $\rho$ values stall; a moderate-to-large penalty gives the best convergence speed.}
+\label{fig:part2-rho}
+\end{figure}
+
+\section*{Part 3: Entropic Regularization}
+\textbf{(a) Run Sinkhorn.} We solved the entropically regularized problem with POT's Sinkhorn implementation and, for extra credit, also implemented the alternating row/column rescaling ourselves in NumPy using a log-domain update to remain stable at smaller $\lambda$. For $\lambda=1$ and $\lambda=0.1$, both Sinkhorn implementations converged quickly and matched each other very closely.
+
+\textbf{(b) Compare with an IPM.} We used a conic baseline in CVXPY (Clarabel) and compared it against Sinkhorn at $\lambda\in\{1,0.1,0.01\}$ on the same $n=200$ instance. Sinkhorn was dramatically faster at the easier regularization levels: at $\lambda=1$ it needed $0.015$s versus $1.415$s for the conic baseline, and at $\lambda=0.1$ it needed $0.178$s versus $1.263$s. The solutions were also extremely close: the transport costs were $11.7968$ (Sinkhorn) versus $11.7968$ (conic) at $\lambda=1$, and $11.0789$ versus $11.0789$ at $\lambda=0.1$. At $\lambda=0.01$, the problem became much harder for Sinkhorn, which is exactly the behavior the statement asked us to investigate. The custom log-domain code remained accurate, but it reached the iteration cap in the smallest-$\lambda$ case.
+
+\textbf{(c) Convergence.} Using the same $n=200$ point cloud, we plotted marginal violation versus iteration for $\lambda\in\{1,0.1,0.01\}$. Figure~\ref{fig:part3-conv} shows the expected ordering: $\lambda=1$ converges fastest, $\lambda=0.1$ next, and $\lambda=0.01$ is far slower. This is the practical consequence of the Gibbs kernel becoming sharper and more ill-conditioned as $\lambda$ decreases.
+
+\textbf{(d) Regularization path.} We used the required 15 log-spaced values of $\lambda$ from $10$ to $0.01$ and plotted $\langle C,P_\lambda^\ast\rangle$ against $\lambda$ in Figure~\ref{fig:part3-path}. The transport cost decreases steadily toward the LP baseline as $\lambda\to 0$. Numerically, it moved from $14.0135$ at $\lambda=10$ down to $11.0136$ at $\lambda=0.01$, while the LP reference value for the same instance was $11.0103$.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.64\textwidth]{figures/part3c_convergence.png}
+\caption{Part 3(c) Sinkhorn marginal-violation traces. Larger regularization gives much faster convergence.}
+\label{fig:part3-conv}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.64\textwidth]{figures/part3d_regularization_path.png}
+\caption{Part 3(d) entropic regularization path. The transport cost approaches the exact LP value as $\lambda\to 0$.}
+\label{fig:part3-path}
+\end{figure}
+
+\section*{Visualization}
+For the visualization section, we used exactly the same $n=200$ point cloud in all four panels and compared the LP coupling, the quadratic coupling at $\lambda=0.1$, and the Sinkhorn couplings at $\lambda=1$ and $\lambda=0.01$. Figure~\ref{fig:vis} shows the intended contrast very clearly. The LP and quadratic couplings are sharp and nearly assignment-like, with 200 and 229 displayed edges respectively. Sinkhorn at $\lambda=1$ is much more diffuse: even after thresholding, it still shows 1540 edges while only 26.5\% of the total mass is above the display threshold. When $\lambda$ is reduced to $0.01$, the entropic coupling sharpens again and moves visibly back toward the LP structure.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.84\textwidth]{figures/section7_coupling_panels.png}
+\caption{Visualization section: same point cloud, four couplings. The geometry changes from sharp (LP, quadratic) to diffuse (Sinkhorn, $\lambda=1$) and then sharpens again as the entropic regularization decreases.}
+\label{fig:vis}
+\end{figure}
+
+\section*{Part 4: Gaussian Optimal Transport}
+\textbf{(a) Closed-form Gaussian benchmark.} For our two 2D Gaussians, the Bures--Wasserstein closed form gave
+\[
+W_2^2(\mu_0,\nu_0)=10.27835800,
+\]
+with a mean contribution of $9.81250000$ and a covariance contribution of $0.46585800$. This provides a true continuous-distribution benchmark, which is something we did not have in the earlier discrete-only sections.
+
+\textbf{(b) Discrete experiment.} For each $n\in\{50,100,200,500\}$, we sampled $n$ source points and $n$ target points from the same two Gaussians, solved the exact discrete OT problem with the LP IPM solver, and repeated the experiment for 10 random seeds. This directly follows the statement: fixed Gaussian pair, repeated sampling, then mean $\pm$ one standard deviation.
+
+\textbf{(c) Convergence to $W_2^2$.} Figure~\ref{fig:part4-conv} shows the mean transport cost with one standard deviation. The mean is not perfectly monotone, which is normal because the problem is random, but the convergence trend is clear. The mean costs were $11.249\pm1.497$ at $n=50$, $10.158\pm0.943$ at $n=100$, $10.247\pm0.656$ at $n=200$, and $10.313\pm0.311$ at $n=500$. The key observation is that the variance shrinks strongly with $n$, and by $n=200$ and $n=500$ the empirical mean is already very close to the Gaussian benchmark $10.27835800$.
+
+\textbf{(d) Visualization.} Figure~\ref{fig:part4-geom} overlays Gaussian covariance ellipses with arrows from each sampled source point to its matched target at $n=200$. This final figure ties the whole project together: it shows the same discrete OT problem as before, but now in a setting where the true continuous Wasserstein value is known analytically.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.64\textwidth]{figures/part4bc_convergence.png}
+\caption{Part 4(b,c) convergence of the discrete OT cost to the Gaussian closed form, shown as mean $\pm$ one standard deviation over 10 seeds.}
+\label{fig:part4-conv}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.64\textwidth]{figures/part4d_geometry.png}
+\caption{Part 4(d) geometry plot: sampled point clouds, Gaussian covariance ellipses, and source-to-target matches for $n=200$.}
+\label{fig:part4-geom}
+\end{figure}
+
+\section*{Use of LLMs}
+Codex was used as a productivity tool throughout the project. It helped organize the code into reusable modules, accelerate boilerplate implementation, keep plotting and reporting styles consistent, and support iterative debugging and explanation of the mathematical formulations. We used it especially for translating compact optimization statements into clean implementations, but the experimental choices, solver interpretations, verification steps, and final conclusions were all checked directly against the assignment and the numerical outputs in the repository.
+
+\end{document}
