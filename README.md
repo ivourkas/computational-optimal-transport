@@ -32,6 +32,7 @@ The implementation is organized as reusable Python modules in `ot_lab/` plus rep
 - `scripts/run_part4_gaussian.py`: Part 4 experiments
 - `results/`: generated tables and figures
 - `report/report.tex`: Overleaf-ready report source
+- `report/report.pdf`: Report in pdf
 
 ## Environment
 
